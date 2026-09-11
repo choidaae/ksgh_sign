@@ -275,12 +275,25 @@ function fillRegister(sheet, topic, dateTimeStr, staffList) {
     const destRange = sheet.getRange(dataStart + leftRows, 1, insertCount, 8);
     srcRange.copyTo(destRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     const h = sheet.getRowHeight(dataStart);
-    for (let r = 0; r < insertCount; r++) sheet.setRowHeight(dataStart + leftRows + r, h);
+    sheet.setRowHeights(dataStart + leftRows, insertCount, h);
   } else if (neededRows < leftRows) {
     sheet.deleteRows(dataStart + neededRows, leftRows - neededRows);
   }
 
-  // 페이지 단위로 순번/인원 채우기
+  // 페이지 단위로 순번/인원 채우기.
+  // 셀마다 setValue를 부르면 인원 수만큼 서버를 왕복합니다.
+  // 값을 배열에 모아 왼쪽(A~C)과 오른쪽(E~G) 블록을 각각 한 번에 씁니다.
+  if (LEFT_DEPT_COL < 2 || LEFT_DEPT_COL > 3 || LEFT_NAME_COL < 2 || LEFT_NAME_COL > 3 ||
+      RIGHT_DEPT_COL < 6 || RIGHT_DEPT_COL > 7 || RIGHT_NAME_COL < 6 || RIGHT_NAME_COL > 7) {
+    throw new Error('상단의 열 배치 설정이 왼쪽 A~C, 오른쪽 E~G 범위를 벗어났습니다.');
+  }
+  const leftBlock = [];   // A(순) B(소속) C(이름)
+  const rightBlock = [];  // E(순) F(소속) G(이름)
+  for (let i = 0; i < neededRows; i++) {
+    leftBlock.push(['', '', '']);
+    rightBlock.push(['', '', '']);
+  }
+
   let cursor = dataStart; // 현재 페이지의 시작 시트 행
   for (let p = 0; p < pages; p++) {
     const leftOnPage = pageLeft[p];
@@ -288,28 +301,25 @@ function fillRegister(sheet, topic, dateTimeStr, staffList) {
     const base = p * 2 * k; // 이 페이지 시작 순번 - 1
 
     for (let i = 0; i < leftOnPage; i++) {
-      const r = cursor + i;
+      const idx = cursor - dataStart + i;
       const num = base + i + 1;
-      sheet.getRange(r, 1).setValue(num);                          // A: 순(왼쪽)
-      sheet.getRange(r, LEFT_DEPT_COL).setValue(staffList[num - 1].dept);
-      sheet.getRange(r, LEFT_NAME_COL).setValue(staffList[num - 1].name);
+      leftBlock[idx][0] = num;
+      leftBlock[idx][LEFT_DEPT_COL - 1] = staffList[num - 1].dept;
+      leftBlock[idx][LEFT_NAME_COL - 1] = staffList[num - 1].name;
     }
     for (let i = 0; i < rightOnPage; i++) {
-      const r = cursor + i;
+      const idx = cursor - dataStart + i;
       const num = base + leftOnPage + i + 1;
-      sheet.getRange(r, 5).setValue(num);                          // E: 순(오른쪽)
-      sheet.getRange(r, RIGHT_DEPT_COL).setValue(staffList[num - 1].dept);
-      sheet.getRange(r, RIGHT_NAME_COL).setValue(staffList[num - 1].name);
+      rightBlock[idx][0] = num;
+      rightBlock[idx][RIGHT_DEPT_COL - 5] = staffList[num - 1].dept;
+      rightBlock[idx][RIGHT_NAME_COL - 5] = staffList[num - 1].name;
     }
-    // 오른쪽이 빈 행(좌우 인원이 다를 때) 정리
-    for (let i = rightOnPage; i < leftOnPage; i++) {
-      const r = cursor + i;
-      sheet.getRange(r, 5).clearContent();
-      sheet.getRange(r, RIGHT_DEPT_COL).clearContent();
-      sheet.getRange(r, RIGHT_NAME_COL).clearContent();
-    }
+    // 좌우 인원이 다를 때 오른쪽 남는 행은 배열 초기값인 빈 문자열로 정리됩니다.
     cursor += leftOnPage;
   }
+
+  sheet.getRange(dataStart, 1, neededRows, 3).setValues(leftBlock);
+  sheet.getRange(dataStart, 5, neededRows, 3).setValues(rightBlock);
 
   // 템플릿 상태와 무관하게, 채워진 표 전체(헤더~마지막 데이터 행)에 테두리를 강제로 재적용
   const tableRange = sheet.getRange(headerRow, 1, 1 + neededRows, 8);
@@ -480,13 +490,19 @@ function getRegisterNames(sheetName) {
   return { people: people, rowHeight: rowHeight, colWidths: colWidths };
 }
 
-function findNamePositions(sheet) {
-  // 헤더행 찾기
-  const colA = sheet.getRange(1, 1, Math.min(10, sheet.getLastRow()), 1).getValues();
-  let headerRow = -1;
+// 표 머리행("순")의 행 번호. A열 위쪽 몇 줄만 읽습니다.
+function findHeaderRow_(sheet) {
+  const rows = Math.min(10, sheet.getLastRow());
+  if (rows < 1) return -1;
+  const colA = sheet.getRange(1, 1, rows, 1).getValues();
   for (let i = 0; i < colA.length; i++) {
-    if (String(colA[i][0]).trim() === '순') { headerRow = i + 1; break; }
+    if (String(colA[i][0]).trim() === '순') return i + 1;
   }
+  return -1;
+}
+
+function findNamePositions(sheet) {
+  const headerRow = findHeaderRow_(sheet);
   if (headerRow === -1) return [];
   const dataStart = headerRow + 1;
   const rows = sheet.getLastRow() - dataStart + 1;
@@ -542,12 +558,15 @@ function submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadP
     targetRow = target.row; targetCol = target.signCol;
   }
 
-  // Validate the selected cell against the current register, even with cached client coordinates.
-  if (readTrainingList_(ss).indexOf(sheetName) === -1) throw new Error('서명 가능한 등록부가 아닙니다.');
-  const validTarget = findNamePositions(sheet).some(function(p) {
-    return p.row === targetRow && p.signCol === targetCol && p.name === name;
-  });
-  if (!validTarget) throw new Error('등록부 명단이 변경되었습니다. 연수를 다시 선택해 주세요.');
+  // 클라이언트가 보낸 좌표라도 현재 등록부를 기준으로 다시 확인합니다.
+  // 표 전체를 읽는 대신 캐시된 목록을 쓰고, 서명 칸과 짝을 이루는 이름 셀 하나만 읽습니다.
+  if (getTrainingList().indexOf(sheetName) === -1) throw new Error('서명 가능한 등록부가 아닙니다.');
+  if (targetCol !== LEFT_SIGN_COL && targetCol !== RIGHT_SIGN_COL) throw new Error('서명할 수 없는 칸입니다.');
+  const headerRow = findHeaderRow_(sheet);
+  const mismatch = new Error('등록부 명단이 변경되었습니다. 연수를 다시 선택해 주세요.');
+  if (headerRow === -1 || targetRow <= headerRow || targetRow > sheet.getLastRow()) throw mismatch;
+  const nameCol = (targetCol === LEFT_SIGN_COL) ? LEFT_NAME_COL : RIGHT_NAME_COL;
+  if (String(sheet.getRange(targetRow, nameCol).getValue()) !== String(name)) throw mismatch;
   if (typeof base64Png !== 'string' || !/^data:image\/png;base64,/.test(base64Png)) throw new Error('서명 이미지가 올바르지 않습니다.');
   // Keep old images until a replacement has been inserted successfully.
   const oldImages = sheet.getImages().filter(function(img) {
