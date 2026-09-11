@@ -497,7 +497,7 @@
     function exportSignaturePng(cellWidth, cellHeight) {
       const full = function () { return canvas.toDataURL('image/png'); };
       if (!cellWidth || !cellHeight) return full();
-      const scale = 3; // 고해상도 화면과 이전 서명 다시 불러오기를 감안한 여유
+      const scale = 5; // 고해상도 화면과 이전 서명 다시 불러오기를 감안한 여유
       const w = Math.round(Math.max(20, cellWidth - 6) * scale);
       const h = Math.round(Math.max(14, cellHeight - 6) * scale);
       if (!isFinite(w) || !isFinite(h) || w >= canvas.width) return full();
