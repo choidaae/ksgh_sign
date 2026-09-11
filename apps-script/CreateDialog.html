@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-dark: #1557b0;
+      --text: #1f2430;
+      --muted: #6b7280;
+      --border: #e2e5ea;
+      --success-bg: #e6f6ec;
+      --success-text: #1e7e34;
+      --error-bg: #fdecea;
+      --error-text: #c0392b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      margin: 0;
+      padding: 22px 20px;
+    }
+    h2 { font-size: 16px; margin: 0 0 16px; }
+    .field { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input[type=text] {
+      width: 100%;
+      font-size: 15px;
+      padding: 12px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+    }
+    input[type=text]:focus { outline: none; border-color: var(--primary); }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    button {
+      width: 100%;
+      margin-top: 8px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.05s ease, opacity 0.15s ease;
+    }
+    button:active:not(:disabled) { transform: scale(0.98); background: var(--primary-dark); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status {
+      margin-top: 14px;
+      padding: 11px 13px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      text-align: center;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: #eef2f7; color: var(--muted); }
+    .status.success { background: var(--success-bg); color: var(--success-text); font-weight: 600; }
+    .status.error { background: var(--error-bg); color: var(--error-text); }
+    .status a { color: var(--primary); font-weight: 600; text-decoration: none; }
+  
+:root{--primary:#36c7af;--primary-dark:#117b6c;--bg:#f7f8fc;--card:#fff;--text:#29283d;--muted:#69697d;--border:#e8e7f1;--success-bg:#e4f8f2;--success-text:#176c58;--error-bg:#fff0ec;--error-text:#a93930;--radius:22px;--purple:#8473cf}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55}button,input,select{font:inherit}button,a,input,select{ -webkit-tap-highlight-color:transparent}button,a{touch-action:manipulation}button{cursor:pointer;border:0;border-radius:12px;padding:11px 16px;min-height:44px;font-weight:650;background:#f0edf9;color:#514785}button:disabled{opacity:.5;cursor:default}a{color:#176e62}input,select{width:100%;min-height:48px;border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff;color:var(--text);font-size:16px}input[type=checkbox]{width:20px;min-height:20px;accent-color:#117b6c}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8473cf;outline-offset:3px}.card{background:white;border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:0 8px 26px #38305706}.primary,.btn-primary{background:var(--primary);color:#123f37;width:100%;font-weight:750}.secondary{background:#f0edf9;color:#514785}.muted,.hint{color:var(--muted);font-size:13px}.status{display:none;padding:12px;border-radius:12px;margin-top:12px;font-size:14px}.status.show{display:block}.status.info{background:#f0edf9;color:#514785}.status.success{background:var(--success-bg);color:var(--success-text)}.status.error{background:var(--error-bg);color:var(--error-text)}label{display:block;font-size:13px;font-weight:650;margin-bottom:6px}.field{margin-bottom:16px}h1,h2,p{margin-top:0}h2{font-size:19px;margin-bottom:6px}.badge{display:inline-block;border-radius:999px;background:#e4f8f2;color:#176c58;padding:4px 11px;font-size:12px}.offbadge{background:#f0edf9;color:#514785}.empty{padding:32px;text-align:center;color:var(--muted)}[hidden]{display:none!important}
+body{background:#f7f8fc;padding:24px}h2{font-size:21px}button{color:#123f37}</style>
+</head>
+<body>
+  <h2>새 연수 등록부 만들기</h2>
+
+  <div class="field">
+    <label for="topic">연수 주제</label>
+    <input type="text" id="topic" placeholder="예) 2026학년도 청렴 교육 연수">
+  </div>
+
+  <div class="field">
+    <label for="dateTime">일시</label>
+    <input type="text" id="dateTime" placeholder="예) 2026.9.11. 13:00">
+    <div class="hint">"등록부 양식" 탭 서식을 복제하고, 활성(TRUE) 인원이 자동으로 채워집니다.</div>
+  </div>
+
+  <button id="submitBtn" onclick="submitForm()">등록부 생성</button>
+  <div class="status" id="status" role="status"></div>
+
+  <script>
+    function setStatus(text, type) {
+      const el = document.getElementById('status');
+      el.textContent = text || '';
+      el.className = 'status' + (text ? ' show' : '') + (type ? ' ' + type : '');
+    }
+
+    function submitForm() {
+      const topic = document.getElementById('topic').value.trim();
+      const dateTime = document.getElementById('dateTime').value.trim();
+      if (!topic) { setStatus('연수 주제를 입력해 주세요.', 'error'); return; }
+
+      document.getElementById('submitBtn').disabled = true;
+      setStatus('생성 중입니다...', 'info');
+
+      google.script.run
+        .withSuccessHandler(function (r) {
+          setStatus('"' + r.sheetName + '" 탭이 생성되었습니다. 창을 닫아주세요.', 'success');
+        })
+        .withFailureHandler(function (err) {
+          document.getElementById('submitBtn').disabled = false;
+          setStatus('오류: ' + err.message, 'error');
+        })
+        .createTrainingRegister(topic, dateTime);
+    }
+  </script>
+</body>
+</html>
