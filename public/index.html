@@ -1,7 +1,17 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <base target="_top"><title>연수 서명</title>
+  <base target="_top"><title>군산여자고등학교 연수 서명부</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="군산여자고등학교">
+  <meta property="og:title" content="군산여자고등학교 연수 서명부">
+  <meta property="og:description" content="연수를 선택하고 서명하면 등록부에 바로 기록됩니다.">
+  <meta property="og:image" content="{{SITE_URL}}sign_logo.png">
+  <meta property="og:url" content="{{SITE_URL}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="sign_logo.png">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <style>
     :root {
@@ -480,6 +490,27 @@
         .catch(function (err) { loadingPrevious=false;lockForm(false);setStatus('오류: ' + err.message, 'error'); });
     }
 
+    // 시트는 서명을 칸 크기로 줄여서 표시합니다. 보내기 전에 미리 줄이면
+    // 업로드와 시트 삽입이 빨라지고 _서명저장 시트에 쌓이는 문자열도 짧아집니다.
+    // 잘라내기는 하지 않습니다. 서버가 이미지를 칸에 맞춰 늘리므로 여백을 잘라내면
+    // 서명이 칸 안에서 커 보이는 등 기존과 모양이 달라집니다.
+    function exportSignaturePng(cellWidth, cellHeight) {
+      const full = function () { return canvas.toDataURL('image/png'); };
+      if (!cellWidth || !cellHeight) return full();
+      const scale = 3; // 고해상도 화면과 이전 서명 다시 불러오기를 감안한 여유
+      const w = Math.round(Math.max(20, cellWidth - 6) * scale);
+      const h = Math.round(Math.max(14, cellHeight - 6) * scale);
+      if (!isFinite(w) || !isFinite(h) || w >= canvas.width) return full();
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const octx = out.getContext('2d');
+      if (!octx) return full();
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = 'high';
+      octx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, w, h);
+      return out.toDataURL('image/png');
+    }
+
     function submitSign() {
       if(submitting || loadingPrevious || loadingData)return;
       const training = document.getElementById('trainingSelect').value;
@@ -500,7 +531,7 @@
 
       submitting=true;lockForm(true);document.getElementById('signSubmit').textContent='저장 중…';
       setStatus('저장 중...', 'info');
-      window.callApi('submitSignature', training, name, canvas.toDataURL('image/png'), row, signCol, hadPrevious, width, height)
+      window.callApi('submitSignature', training, name, exportSignaturePng(width, height), row, signCol, hadPrevious, width, height)
         .then(function () {
           submitting=false;lockForm(false);clearPad();document.getElementById('signSubmit').textContent='서명 완료';
           setStatus('✓ 서명이 저장되었습니다. 감사합니다.', 'success');
