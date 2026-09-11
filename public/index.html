@@ -202,7 +202,7 @@
     <div class="card">
       <div class="field">
         <label for="trainingSelect">연수 선택</label>
-        <select id="trainingSelect"><option value="">불러오는 중...</option></select>
+        <select id="trainingSelect"><option value="">첫 접속 시 지연될 수 있습니다...</option></select>
       </div>
       <div class="person-fields">
       <div class="field">
@@ -310,6 +310,7 @@
           Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > ACTIVATE_TAP_DISTANCE) return;
       signActive = true;
       canvasBox.classList.add('active');
+      canvas.style.touchAction = 'none'; // 스타일시트 규칙에 기대지 않고 직접 지정
       if (!hasStroke) {
         placeholder.textContent = '이제 손가락이나 펜으로 서명해 주세요';
         placeholder.classList.remove('hidden');
@@ -320,12 +321,17 @@
       if (activationTap && activationTap.id === e.pointerId) activationTap = null;
       if (drawingPointer === e.pointerId) stopDrawing();
     }
-    // touch-action 값이 바뀌어도 브라우저의 스크롤 처리에는 다음 화면 갱신 때 반영됩니다.
-    // 활성화 직후 바로 손을 대면 그 틈에 스크롤이 시작되므로, 그리는 동안에는
-    // touchmove 를 직접 막아 확실히 차단합니다. passive: false 여야 막을 수 있습니다.
-    canvas.addEventListener('touchmove', function (e) {
-      if (signActive && drawing && e.cancelable) e.preventDefault();
-    }, { passive: false });
+    // 활성 상태에서는 서명란 위의 화면 이동을 브라우저에 넘기지 않습니다.
+    // touch-action 만으로는 브라우저가 스크롤로 판단한 뒤를 되돌리지 못해,
+    // 터치 이벤트의 기본 동작을 직접 취소합니다. passive: false 여야 취소됩니다.
+    // 그리는 중인지는 보지 않습니다. 활성 상태면 무조건 막습니다.
+    function blockPageMove(e) {
+      if (!signActive) return;                       // 비활성일 때는 평소대로 스크롤됩니다
+      if (e.touches && e.touches.length > 1) return; // 두 손가락 확대는 그대로 둡니다
+      if (e.cancelable) e.preventDefault();
+    }
+    canvas.addEventListener('touchstart', blockPageMove, { passive: false });
+    canvas.addEventListener('touchmove', blockPageMove, { passive: false });
 
     canvas.addEventListener('pointerdown', start);
     canvas.addEventListener('pointermove', move);
@@ -341,18 +347,17 @@
       stopDrawing();
       signActive = false;
       canvasBox.classList.remove('active');
+      canvas.style.touchAction = '';
       if (!hasStroke) {
         placeholder.textContent = '한 번 눌렀다 떼면 서명할 수 있어요';
         placeholder.classList.remove('hidden');
       }
     }
-    // 영역 밖을 누르거나 창이 포커스를 잃으면, 다음 입력은 다시 탭으로 활성화합니다.
-    // 스크롤은 해제 조건에서 뺐습니다. 활성 상태에서는 위에서 스크롤을 막으므로
-    // 여기 걸리는 경우는 주소창이 접히는 등 사용자 의도와 무관한 상황뿐이고,
-    // 그때 해제되면 다음 획이 다시 밀리는 악순환이 생깁니다.
+    // 영역 밖을 누르거나 화면이 스크롤되면, 다음 입력은 다시 탭으로 활성화합니다.
     document.addEventListener('pointerdown', function (e) {
       if (!canvasBox.contains(e.target)) deactivate();
     });
+    window.addEventListener('scroll', deactivate, {passive: true});
     window.addEventListener('blur', deactivate);
 
     function clearPad() {
