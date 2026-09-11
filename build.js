@@ -57,6 +57,26 @@ if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(appsScriptUrl)) {
 fs.rmSync(outDir, { recursive: true, force: true });
 copyDir(srcDir, outDir);
 
+// 카카오톡·메신저 미리보기(og:image)는 상대 경로를 읽지 못해 전체 주소가 필요합니다.
+// GitHub Actions 에서는 Pages 주소가 자동으로 들어오고, 로컬에서는 .env 의 SITE_URL 을 씁니다.
+let siteUrl = (env.SITE_URL || '').trim();
+if (siteUrl && !siteUrl.endsWith('/')) siteUrl += '/';
+
+if (!siteUrl) {
+  console.warn('경고: SITE_URL 이 없어 링크 미리보기 이미지가 표시되지 않습니다.');
+} else if (!fs.existsSync(path.join(srcDir, 'sign_logo.png'))) {
+  console.warn('경고: public/sign_logo.png 가 없습니다. 링크 미리보기 이미지가 표시되지 않습니다.');
+}
+
+for (const name of fs.readdirSync(outDir)) {
+  if (!name.endsWith('.html')) continue;
+  const file = path.join(outDir, name);
+  const html = fs.readFileSync(file, 'utf8');
+  if (html.includes('{{SITE_URL}}')) {
+    fs.writeFileSync(file, html.split('{{SITE_URL}}').join(siteUrl), 'utf8');
+  }
+}
+
 const config = {
   appsScriptUrl: appsScriptUrl,
   spreadsheetId: (env.SPREADSHEET_ID || '').trim(),
@@ -76,3 +96,4 @@ fs.writeFileSync(path.join(outDir, '.nojekyll'), '', 'utf8');
 console.log('dist/ 생성 완료');
 console.log('  서버 주소   : ' + appsScriptUrl);
 console.log('  관리자 암호 : ' + (config.requireAdminToken ? '사용' : '사용 안 함'));
+console.log('  사이트 주소 : ' + (siteUrl || '(미설정)'));
