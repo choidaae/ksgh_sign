@@ -320,6 +320,7 @@
       signActive = true;
       canvasBox.classList.add('active');
       canvas.style.touchAction = 'none'; // 스타일시트 규칙에 기대지 않고 직접 지정
+      lockPageScroll();
       if (!hasStroke) {
         placeholder.textContent = '이제 손가락이나 펜으로 서명해 주세요';
         placeholder.classList.remove('hidden');
@@ -334,6 +335,33 @@
     // touch-action 만으로는 브라우저가 스크롤로 판단한 뒤를 되돌리지 못해,
     // 터치 이벤트의 기본 동작을 직접 취소합니다. passive: false 여야 취소됩니다.
     // 그리는 중인지는 보지 않습니다. 활성 상태면 무조건 막습니다.
+    // 활성화된 동안에는 페이지를 그 자리에 고정합니다.
+    // 터치 기본 동작을 취소하는 방식은 브라우저가 이를 존중해야 통하지만,
+    // 스크롤할 높이 자체가 없으면 존중 여부와 무관하게 움직이지 않습니다.
+    let lockedScrollY = 0;
+    function lockPageScroll() {
+      if (document.body.dataset.scrollLocked === '1') return;
+      lockedScrollY = window.scrollY || window.pageYOffset || 0;
+      document.body.dataset.scrollLocked = '1';
+      document.body.style.position = 'fixed';
+      document.body.style.top = (-lockedScrollY) + 'px';
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+    }
+    function unlockPageScroll() {
+      if (document.body.dataset.scrollLocked !== '1') return;
+      delete document.body.dataset.scrollLocked;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, lockedScrollY);
+    }
+
     function blockPageMove(e) {
       if (!signActive) return;                       // 비활성일 때는 평소대로 스크롤됩니다
       if (e.touches && e.touches.length > 1) return; // 두 손가락 확대는 그대로 둡니다
@@ -357,6 +385,7 @@
       signActive = false;
       canvasBox.classList.remove('active');
       canvas.style.touchAction = '';
+      unlockPageScroll();
       if (!hasStroke) {
         placeholder.textContent = '한 번 눌렀다 떼면 서명할 수 있어요';
         placeholder.classList.remove('hidden');
@@ -366,7 +395,11 @@
     document.addEventListener('pointerdown', function (e) {
       if (!canvasBox.contains(e.target)) deactivate();
     });
-    window.addEventListener('scroll', deactivate, {passive: true});
+    // 페이지를 고정·복원할 때도 스크롤 이벤트가 발생하므로, 고정 중에는 무시합니다.
+    // 고정하지 않은 상태의 스크롤은 그대로 해제 신호로 씁니다.
+    window.addEventListener('scroll', function () {
+      if (document.body.dataset.scrollLocked !== '1') deactivate();
+    }, {passive: true});
     window.addEventListener('blur', deactivate);
 
     function clearPad() {
