@@ -184,19 +184,10 @@
 .header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:20px 16px}.header h1{min-width:0;font-size:clamp(14px,4vw,23px)}.refresh-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;background:#ffffffa6;color:#176e62}.refresh-icon:hover:not(:disabled){background:#fff}.refresh-icon[aria-busy="true"] .refresh-glyph{animation:refresh-spin 1s linear infinite}@keyframes refresh-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.refresh-icon[aria-busy="true"] .refresh-glyph{animation:none}}
 .refresh-glyph{display:block;flex:none;width:28px;height:28px;overflow:visible;transform-origin:50% 50%}.refresh-glyph text{font-family:Arial,"Segoe UI Symbol",sans-serif;font-size:28px;font-weight:700}
 #canvasBox.active #pad{touch-action:none}
-.inapp-notice{background:#fff0ec;border:1.5px solid #f0c4b8;border-radius:16px;padding:16px;margin-bottom:14px}
-.inapp-notice p{margin:0 0 10px;color:#a93930;font-size:14px;font-weight:650;line-height:1.5}
-.inapp-notice button{width:100%;background:#a93930;color:#fff}
-.inapp-notice small{display:block;margin-top:9px;color:#8a6258;font-size:12px;line-height:1.5}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="inapp-notice" id="inappNotice" hidden>
-      <p>카카오톡 안에서 열면 서명 중에 화면이 밀립니다. 브라우저로 열어서 서명해 주세요.</p>
-      <button type="button" id="openExternal">브라우저로 열기</button>
-      <small>버튼이 동작하지 않으면 오른쪽 위 ⋯ 을 눌러 ‘다른 브라우저로 열기’를 선택하세요.</small>
-    </div>
     <div class="topnav">
       <a class="nav-btn" href="admin.html">등록부 관리 ↗</a>
     </div>
@@ -626,18 +617,6 @@
     }
     centerRefreshSymbol();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(centerRefreshSymbol);
-    // 카카오톡 인앱브라우저는 웹 위에 자체 화면 이동 처리를 얹습니다.
-    // 페이지에서 기본 동작을 취소해도 앱 층에서 따로 움직여 서명 중 화면이 밀립니다.
-    // 페이지 코드로는 막을 수 없어, 기본 브라우저로 열도록 안내합니다.
-    if (/KAKAOTALK/i.test(navigator.userAgent)) {
-      document.getElementById('inappNotice').hidden = false;
-      document.getElementById('openExternal').addEventListener('click', function () {
-        // 카카오가 문서로 공개한 방식은 아니어서 실패할 수 있습니다.
-        // 그때를 대비해 배너에 수동 경로를 함께 적어 두었습니다.
-        window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(window.location.href);
-      });
-    }
-
     loadTrainingList(false);
   </script>
 </body>
