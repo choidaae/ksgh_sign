@@ -188,7 +188,7 @@
 /* 제목 아래 첫 접속 지연 안내 */
 .header .title{flex:1;min-width:0}
 .header .title h1{font-size:clamp(14px,4vw,23px)}
-.load-hint{margin:5px 0 0;font-size:11.5px;font-weight:400;color:#69697d;line-height:1.4;white-space:normal}
+.load-hint{margin:5px 0 0;font-size:13px;font-weight:500;color:#5f5d73;line-height:1.4;white-space:normal}
 
 /* 안내는 서명란 한가운데에 띄웁니다. 카드 아래쪽에 있으면 눈에 들어오지 않습니다. */
 .canvas-box .status{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);
@@ -260,10 +260,21 @@
     let drawing = false, lastX = 0, lastY = 0, hasStroke = false, signActive = false;
     const canvasBox = document.getElementById('canvasBox');
 
-    function setStatus(text, type) {
+    let statusTimer = null;
+    function setStatus(text, type, autoHideMs) {
       const el = document.getElementById('status');
+      if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
       el.textContent = text || '';
       el.className = 'status' + (text ? ' show' : '') + (type ? ' ' + type : '');
+      // 확인만 하면 되는 안내는 잠시 뒤 스스로 사라집니다.
+      if (text && autoHideMs) statusTimer = setTimeout(function () { setStatus(''); }, autoHideMs);
+    }
+
+    // 제목 아래 한 줄 안내. 불러오는 동안에만 보여줍니다.
+    function setHint(text) {
+      const hint = document.getElementById('loadHint');
+      hint.textContent = text || '';
+      hint.hidden = !text;
     }
 
     function scalePoint(e) {
@@ -465,10 +476,10 @@
       const selectedTraining = sel.value;
       const version = ++requestVersion;
       setDataLoading(true);
-      // 첫 조회 동안에만 제목 아래에 지연 안내를 보여줍니다.
-      const hint = document.getElementById('loadHint');
-      if (!forceRefresh && !firstLoadDone) hint.hidden = false;
-      setStatus(forceRefresh ? '최신 목록을 불러오는 중...' : '연수 목록을 불러오는 중...', 'info');
+      // 새로고침 진행과 첫 접속 지연 안내는 모두 제목 아래에 보여줍니다.
+      setHint(forceRefresh ? '최신 목록을 불러오는 중...'
+        : (firstLoadDone ? '' : '처음 접속시 로딩이 지연될 수 있습니다.'));
+      setStatus(forceRefresh ? '' : '연수 목록을 불러오는 중...', 'info');
       try {
         const list = await requestData('getTrainingList', forceRefresh === true);
         if (version !== requestVersion) return;
@@ -480,16 +491,17 @@
         sel.value = retained ? selectedTraining : '';
         await updateRegisterPeople(sel.value, version);
         if (version !== requestVersion) return;
+        // 새로고침이 끝났다는 안내는 따로 띄우지 않습니다.
+        // 고르셨던 연수가 사라진 경우에만 알립니다.
         if (forceRefresh) {
-          setStatus(selectedTraining && !retained ? '선택했던 연수가 목록에 없습니다. 연수를 다시 선택해 주세요.' :
-            retained ? '최신 목록과 명단을 불러왔습니다. 이름을 다시 선택해 주세요.' : '최신 목록을 불러왔습니다.', 'success');
+          setStatus(selectedTraining && !retained ? '선택했던 연수가 목록에 없습니다. 연수를 다시 선택해 주세요.' : '', 'info');
         } else setStatus('');
       } catch (err) {
         if (version === requestVersion) setStatus('불러오지 못했습니다. 새로고침해 주세요. ' + err.message, 'error');
       } finally {
         if (version === requestVersion) {
           firstLoadDone = true;
-          hint.hidden = true;
+          setHint('');
           setDataLoading(false);
         }
       }
@@ -548,7 +560,7 @@
       window.callApi('getPreviousSignature', name)
         .then(function (dataUrl) {
           if(version!==requestVersion){loadingPrevious=false;lockForm(false);return;}
-          if (!dataUrl) { loadingPrevious=false;lockForm(false); setStatus('저장된 이전 서명이 없습니다.', 'error'); return; }
+          if (!dataUrl) { loadingPrevious=false;lockForm(false); setStatus('저장된 이전 서명이 없습니다.', 'error', 2000); return; }
           const img = new Image();
           img.onload = function () {
             loadingPrevious=false;lockForm(false);
@@ -609,7 +621,7 @@
       window.callApi('submitSignature', training, name, exportSignaturePng(width, height), row, signCol, hadPrevious, width, height)
         .then(function () {
           submitting=false;lockForm(false);clearPad();document.getElementById('signSubmit').textContent='서명 완료';
-          setStatus('✓ 서명이 저장되었습니다. 감사합니다.', 'success');
+          setStatus('서명이 저장되었습니다', 'success', 2000);
           // 서버를 다시 조회하지 않고, 방금 서명한 사람만 화면에서 바로 "완료"로 표시
           if (opt) {
             opt.dataset.done = '1';
