@@ -250,7 +250,7 @@
     <div class="card">
       <label for="pad">서명</label>
       <div class="identity-row">
-        <div class="identity" id="identity">연수와 이름을 먼저 선택해 주세요.</div>
+        <div class="identity" id="identity">연수와 이름을 먼저 선택하세요.</div>
         <div class="btn-row">
           <button class="secondary" onclick="loadPrevious()">이전 서명</button>
           <button class="secondary" onclick="clearPad()">지우기</button>
@@ -543,7 +543,7 @@
 
     document.getElementById('nameSelect').addEventListener('change', function () {
       ++requestVersion; clearPad(); setStatus('');
-      document.getElementById('identity').textContent = this.value ? this.selectedOptions[0].textContent + ' · 본인인지 확인하세요.' : '이름을 선택하세요.';
+      document.getElementById('identity').textContent = this.value ? this.selectedOptions[0].textContent + ' · 아래에 서명하세요.' : '이름을 선택하세요.';
     });
 
     function renderNames(dept) {
