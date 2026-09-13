@@ -7,7 +7,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="군산여자고등학교">
   <meta property="og:title" content="군산여자고등학교 연수 서명부">
-  <meta property="og:description" content="연수를 선택하고 서명하면 등록부에 바로 기록됩니다.">
+  <meta property="og:description" content="군산여고 연수 서명 및 서명부 생성 관리 페이지.">
   <meta property="og:image" content="{{SITE_URL}}sign_logo.png">
   <meta property="og:url" content="{{SITE_URL}}">
   <meta name="twitter:card" content="summary_large_image">
@@ -185,10 +185,24 @@
 .refresh-glyph{display:block;flex:none;width:28px;height:28px;overflow:visible;transform-origin:50% 50%}.refresh-glyph text{font-family:Arial,"Segoe UI Symbol",sans-serif;font-size:28px;font-weight:700}
 #canvasBox.active #pad{touch-action:none}
 
-/* 제목 아래 첫 접속 지연 안내 */
-.header .title{flex:1;min-width:0}
-.header .title h1{font-size:clamp(14px,4vw,23px)}
-.load-hint{margin:5px 0 0;font-size:13px;font-weight:500;color:#5f5d73;line-height:1.4;white-space:normal}
+/* 선택란 카드 한가운데 뜨는 안내 */
+.card{position:relative}
+.form-status{position:absolute;left:50%;top:50%;z-index:4;
+  width:max-content;max-width:min(240px,calc(100% - 32px));
+  padding:13px 16px;border-radius:14px;text-align:center;
+  font-size:14px;line-height:1.5;background:#f0edf9;color:#514785;
+  box-shadow:0 10px 28px #2b264a24;pointer-events:none;
+  opacity:0;transform:translate(-50%,-50%) scale(.96);
+  transition:opacity .16s ease,transform .16s ease}
+.form-status.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+@media(prefers-reduced-motion:reduce){.form-status{transition:none}}
+
+/* 이름 확인란과 보조 버튼을 한 줄에 둡니다. */
+.identity-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.identity-row .identity{flex:1;min-width:0;margin-bottom:0;text-align:left}
+.identity-row .btn-row{flex:none;margin-top:0;gap:6px}
+.identity-row .btn-row button{flex:none;white-space:nowrap;font-size:12px;
+  padding:9px 10px;min-height:38px;border-radius:10px}
 
 /* 안내는 서명란 한가운데에 띄웁니다. 카드 아래쪽에 있으면 눈에 들어오지 않습니다. */
 .canvas-box .status{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);
@@ -206,19 +220,15 @@
 <body>
   <div class="wrap">
     <div class="topnav">
-      <a class="nav-btn" href="admin.html">등록부 관리 ↗</a>
+      <a class="nav-btn" href="admin.html">서명부 관리 ↗</a>
     </div>
     <div class="header">
-      <div class="title">
-        <h1>군산여자고등학교 연수 서명부</h1>
-        <p class="load-hint" id="loadHint" hidden>처음 접속시 로딩이 지연될 수 있습니다.</p>
-      </div>
+      <h1>군산여자고등학교 연수 서명부</h1>
       <button type="button" id="refreshSign" class="refresh-icon" onclick="loadTrainingList(true)" aria-label="최신 목록 새로고침" title="최신 목록 새로고침" aria-busy="false">
         <svg class="refresh-glyph" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><text id="refreshSymbol" x="16" y="16" text-anchor="middle" dominant-baseline="central" fill="currentColor">↻</text></svg>
       </button>
     </div>
 
-    <div class="steps" aria-label="서명 순서"><span>1 연수 선택</span><span>2 본인 확인</span><span>3 서명 완료</span></div>
     <div class="card">
       <div class="field">
         <label for="trainingSelect">연수 선택</label>
@@ -234,18 +244,22 @@
         <select id="nameSelect"><option value="">연수를 먼저 선택하세요</option></select>
       </div>
       </div>
+      <div class="form-status" id="formStatus" role="status" aria-live="polite"></div>
     </div>
 
     <div class="card">
-      <label for="pad">서명</label><div class="identity" id="identity">연수와 이름을 먼저 선택해 주세요.</div>
+      <label for="pad">서명</label>
+      <div class="identity-row">
+        <div class="identity" id="identity">연수와 이름을 먼저 선택해 주세요.</div>
+        <div class="btn-row">
+          <button class="secondary" onclick="loadPrevious()">이전 서명 불러오기</button>
+          <button class="secondary" onclick="clearPad()">지우기</button>
+        </div>
+      </div>
       <div class="canvas-box" id="canvasBox">
         <canvas aria-label="한 번 눌렀다 떼어 활성화한 뒤 서명하는 영역" id="pad" width="440" height="190"></canvas>
         <div class="placeholder" id="placeholder">한 번 눌렀다 떼면 서명할 수 있어요</div>
         <div class="status" id="status" role="status" aria-live="polite"></div>
-      </div>
-      <div class="btn-row">
-        <button class="secondary" onclick="loadPrevious()">이전 서명 불러오기</button>
-        <button class="secondary" onclick="clearPad()">지우기</button>
       </div>
     </div>
     <div class="submit-area"><button class="primary" id="signSubmit" onclick="submitSign()">서명 완료</button></div>
@@ -270,11 +284,11 @@
       if (text && autoHideMs) statusTimer = setTimeout(function () { setStatus(''); }, autoHideMs);
     }
 
-    // 제목 아래 한 줄 안내. 불러오는 동안에만 보여줍니다.
-    function setHint(text) {
-      const hint = document.getElementById('loadHint');
-      hint.textContent = text || '';
-      hint.hidden = !text;
+    // 연수·소속·이름 선택란 한가운데 뜨는 안내. 불러오는 동안에만 보여줍니다.
+    function setFormStatus(text) {
+      const el = document.getElementById('formStatus');
+      el.textContent = text || '';
+      el.className = 'form-status' + (text ? ' show' : '');
     }
 
     function scalePoint(e) {
@@ -452,7 +466,8 @@
     }
     async function updateRegisterPeople(training, version) {
       resetPeople(training ? '불러오는 중...' : '연수를 먼저 선택하세요');
-      if (!training) return;
+      if (!training) { setFormStatus(''); return; }
+      setFormStatus('이름을 불러오는 중...');
       try {
         const result = await requestData('getRegisterNames', training);
         if (version !== requestVersion) return;
@@ -467,6 +482,8 @@
       } catch (err) {
         if (version === requestVersion) resetPeople('새로고침해 주세요');
         throw err;
+      } finally {
+        if (version === requestVersion) setFormStatus('');
       }
     }
     async function loadTrainingList(forceRefresh) {
@@ -476,10 +493,10 @@
       const selectedTraining = sel.value;
       const version = ++requestVersion;
       setDataLoading(true);
-      // 새로고침 진행과 첫 접속 지연 안내는 모두 제목 아래에 보여줍니다.
-      setHint(forceRefresh ? '최신 목록을 불러오는 중...'
-        : (firstLoadDone ? '' : '처음 접속시 로딩이 지연될 수 있습니다.'));
-      setStatus(forceRefresh ? '' : '연수 목록을 불러오는 중...', 'info');
+      // 불러오는 중 안내는 선택란 안내창에서만 보여줍니다.
+      setFormStatus(forceRefresh ? '최신 목록을 불러오는 중...'
+        : '불러오는 중... 처음 접속시 로딩이 지연될 수 있습니다.');
+      setStatus('');
       try {
         const list = await requestData('getTrainingList', forceRefresh === true);
         if (version !== requestVersion) return;
@@ -501,7 +518,7 @@
       } finally {
         if (version === requestVersion) {
           firstLoadDone = true;
-          setHint('');
+          setFormStatus('');
           setDataLoading(false);
         }
       }
