@@ -115,7 +115,7 @@
       display: block;
       width: 100%;
       height: 190px;
-      touch-action: auto;
+      touch-action: none;
       background: transparent;
     }
     .placeholder {
@@ -183,7 +183,14 @@
 .person-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.person-fields .field{min-width:0;margin-bottom:0}.person-fields select{min-width:0;padding-left:10px;padding-right:30px;text-overflow:ellipsis}
 .header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:20px 16px}.header h1{min-width:0;font-size:clamp(14px,4vw,23px)}.refresh-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;background:#ffffffa6;color:#176e62}.refresh-icon:hover:not(:disabled){background:#fff}.refresh-icon[aria-busy="true"] .refresh-glyph{animation:refresh-spin 1s linear infinite}@keyframes refresh-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.refresh-icon[aria-busy="true"] .refresh-glyph{animation:none}}
 .refresh-glyph{display:block;flex:none;width:28px;height:28px;overflow:visible;transform-origin:50% 50%}.refresh-glyph text{font-family:Arial,"Segoe UI Symbol",sans-serif;font-size:28px;font-weight:700}
-#canvasBox.active #pad{touch-action:none}
+/* 서명란에서 시작한 제스처는 첫 접촉부터 필기에 사용합니다. */
+#canvasBox, #pad {
+  touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 .inapp-notice{background:#fff0ec;border:1.5px solid #f0c4b8;border-radius:16px;padding:16px;margin-bottom:14px}
 .inapp-notice p{margin:0 0 10px;color:#a93930;font-size:14px;font-weight:650;line-height:1.5}
 .inapp-notice button{width:100%;background:#a93930;color:#fff}
@@ -228,9 +235,10 @@
     <div class="card">
       <label for="pad">서명</label><div class="identity" id="identity">연수와 이름을 먼저 선택해 주세요.</div>
       <div class="canvas-box" id="canvasBox">
-        <canvas aria-label="한 번 눌렀다 떼어 활성화한 뒤 서명하는 영역" id="pad" width="440" height="190"></canvas>
-        <div class="placeholder" id="placeholder">한 번 눌렀다 떼면 서명할 수 있어요</div>
+        <canvas aria-label="손가락이나 펜으로 바로 서명하는 영역" id="pad" width="440" height="190"></canvas>
+        <div class="placeholder" id="placeholder">손가락이나 펜으로 서명해 주세요</div>
       </div>
+      <p class="hint" style="margin:8px 0 0">화면을 이동하려면 서명란 밖을 쓸어 주세요.</p>
       <div class="btn-row">
         <button class="secondary" onclick="loadPrevious()">이전 서명 불러오기</button>
         <button class="secondary" onclick="clearPad()">지우기</button>
@@ -247,7 +255,7 @@
     const canvas = document.getElementById('pad');
     const ctx = canvas.getContext('2d');
     const placeholder = document.getElementById('placeholder');
-    let drawing = false, lastX = 0, lastY = 0, hasStroke = false, signActive = false;
+    let drawing = false, lastX = 0, lastY = 0, hasStroke = false;
     const canvasBox = document.getElementById('canvasBox');
 
     function setStatus(text, type) {
@@ -263,22 +271,16 @@
       return { x: cx * canvas.width / rect.width, y: cy * canvas.height / rect.height };
     }
     let submitting = false, loadingPrevious = false, loadingData = false, requestVersion = 0;
-    const ACTIVATE_TAP_DISTANCE = 10; // CSS 픽셀: 움직임이 크면 스크롤/드래그로 간주
-    const ACTIVATE_TAP_DURATION = 600; // 밀리초: 길게 누르기는 활성화하지 않음
-    let activationTap = null, drawingPointer = null;
+    let drawingPointer = null;
 
     function canSign() {
       return !submitting && !loadingPrevious && !loadingData &&
         !!document.getElementById('nameSelect').selectedOptions[0]?.dataset.row;
     }
     function start(e) {
-      if (e.isPrimary === false) { activationTap = null; return; }
+      if (e.isPrimary === false) return;
       if (e.button !== 0 || !canSign() || drawingPointer !== null) return;
-      if (!signActive) {
-        // 첫 터치는 눌렀다 뗀 뒤에만 판정합니다. 스크롤을 막거나 선을 그리지 않습니다.
-        activationTap = {id: e.pointerId, x: e.clientX, y: e.clientY, time: e.timeStamp, moved: false};
-        return;
-      }
+      canvasBox.classList.add('active');
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       drawingPointer = e.pointerId;
@@ -289,12 +291,6 @@
       if (!hasStroke) { hasStroke = true; placeholder.classList.add('hidden'); }
     }
     function move(e) {
-      if (activationTap && activationTap.id === e.pointerId) {
-        if (Math.hypot(e.clientX - activationTap.x, e.clientY - activationTap.y) > ACTIVATE_TAP_DISTANCE) {
-          activationTap.moved = true;
-        }
-        return;
-      }
       if (!drawing || drawingPointer !== e.pointerId) return;
       const p = scalePoint(e);
       ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#1f2430';
@@ -306,68 +302,45 @@
       const pointer = drawingPointer;
       drawing = false;
       drawingPointer = null;
+      canvasBox.classList.remove('active');
       if (pointer !== null && canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
     }
     function end(e) {
-      if (drawingPointer === e.pointerId) { stopDrawing(); return; }
-      if (!activationTap || activationTap.id !== e.pointerId) return;
-      const tap = activationTap;
-      activationTap = null;
-      const rect = canvas.getBoundingClientRect();
-      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-      if (!canSign() || tap.moved || !inside || e.timeStamp - tap.time > ACTIVATE_TAP_DURATION ||
-          Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > ACTIVATE_TAP_DISTANCE) return;
-      signActive = true;
-      canvasBox.classList.add('active');
-      canvas.style.touchAction = 'none'; // 스타일시트 규칙에 기대지 않고 직접 지정
-      if (!hasStroke) {
-        placeholder.textContent = '이제 손가락이나 펜으로 서명해 주세요';
-        placeholder.classList.remove('hidden');
-      }
-      // 활성화한 첫 터치에서는 점/선을 추가하지 않습니다.
-    }
-    function cancelPointer(e) {
-      if (activationTap && activationTap.id === e.pointerId) activationTap = null;
       if (drawingPointer === e.pointerId) stopDrawing();
     }
-    // 활성 상태에서는 서명란 위의 화면 이동을 브라우저에 넘기지 않습니다.
-    // touch-action 만으로는 브라우저가 스크롤로 판단한 뒤를 되돌리지 못해,
-    // 터치 이벤트의 기본 동작을 직접 취소합니다. passive: false 여야 취소됩니다.
-    // 그리는 중인지는 보지 않습니다. 활성 상태면 무조건 막습니다.
+    function cancelPointer(e) {
+      if (drawingPointer === e.pointerId) stopDrawing();
+    }
+    // 일부 WebView의 기본 터치 동작도 차단합니다. 비활성/로딩 중에도
+    // 서명란에서 시작한 터치는 페이지 스크롤로 바뀌지 않게 합니다.
     function blockPageMove(e) {
-      if (!signActive) return;                       // 비활성일 때는 평소대로 스크롤됩니다
-      if (e.touches && e.touches.length > 1) return; // 두 손가락 확대는 그대로 둡니다
       if (e.cancelable) e.preventDefault();
     }
-    canvas.addEventListener('touchstart', blockPageMove, { passive: false });
-    canvas.addEventListener('touchmove', blockPageMove, { passive: false });
+    canvasBox.addEventListener('touchstart', blockPageMove, { passive: false });
+    canvasBox.addEventListener('touchmove', blockPageMove, { passive: false });
+    canvasBox.addEventListener('contextmenu', blockPageMove);
+    canvasBox.addEventListener('dragstart', blockPageMove);
 
     canvas.addEventListener('pointerdown', start);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', cancelPointer);
     canvas.addEventListener('lostpointercapture', cancelPointer);
-    canvas.addEventListener('pointerleave', function(e) {
-      if (activationTap && activationTap.id === e.pointerId) activationTap = null;
-    });
 
     function deactivate() {
-      activationTap = null;
       stopDrawing();
-      signActive = false;
-      canvasBox.classList.remove('active');
-      canvas.style.touchAction = '';
       if (!hasStroke) {
-        placeholder.textContent = '한 번 눌렀다 떼면 서명할 수 있어요';
+        placeholder.textContent = '손가락이나 펜으로 서명해 주세요';
         placeholder.classList.remove('hidden');
       }
     }
-    // 영역 밖을 누르거나 화면이 스크롤되면, 다음 입력은 다시 탭으로 활성화합니다.
     document.addEventListener('pointerdown', function (e) {
       if (!canvasBox.contains(e.target)) deactivate();
     });
-    window.addEventListener('scroll', deactivate, {passive: true});
     window.addEventListener('blur', deactivate);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) deactivate();
+    });
 
     function clearPad() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -506,7 +479,7 @@
             if(version!==requestVersion)return;
             clearPad();
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            hasStroke = true; // 불러온 서명도 수정하려면 탭으로 활성화
+            hasStroke = true; // 불러온 서명도 바로 이어서 수정 가능
             placeholder.classList.add('hidden');
           };
           img.onerror = function(){loadingPrevious=false;lockForm(false);setStatus('이전 서명을 읽지 못했습니다. 직접 서명해 주세요.','error');};
@@ -593,14 +566,11 @@
     }
     centerRefreshSymbol();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(centerRefreshSymbol);
-    // 카카오톡 인앱브라우저는 웹 위에 자체 화면 이동 처리를 얹습니다.
-    // 페이지에서 기본 동작을 취소해도 앱 층에서 따로 움직여 서명 중 화면이 밀립니다.
-    // 페이지 코드로는 막을 수 없어, 기본 브라우저로 열도록 안내합니다.
+
     if (/KAKAOTALK/i.test(navigator.userAgent)) {
       document.getElementById('inappNotice').hidden = false;
       document.getElementById('openExternal').addEventListener('click', function () {
-        // 카카오가 문서로 공개한 방식은 아니어서 실패할 수 있습니다.
-        // 그때를 대비해 배너에 수동 경로를 함께 적어 두었습니다.
+
         window.location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(window.location.href);
       });
     }
