@@ -25,7 +25,7 @@ const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨�
 const MANAGER_META_KEY = 'trainingManager';
 // 배포된 코드가 어느 버전인지 확인용. 코드를 고칠 때마다 이 값을 바꿔 두면,
 // /exec 주소를 열어보는 것만으로 "지금 서비스되는 코드"를 확인할 수 있습니다.
-const SCRIPT_VERSION = '2026-09-14d';
+const SCRIPT_VERSION = '2026-09-14e';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -405,7 +405,7 @@ function callAction_(action, args) {
     case 'getTrainingList': return getTrainingList(args[0] === true);
     case 'getRegisterNames': return getRegisterNames(args[0]);
     case 'getPreviousSignature': return getPreviousSignature(args[0]);
-    case 'submitSignature': return submitSignature(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
+    case 'submitSignature': return submitSignature(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
     case 'getAdminData': return getAdminData(args[0] === true, args[1] === true);
     case 'getMasterStaffList': return getMasterStaffList();
     case 'saveStaffChanges': return saveStaffChanges(args[0]);
@@ -682,11 +682,11 @@ function getPreviousSignature(name) {
   return null;
 }
 
-function submitSignature(sheetName, name, base64Png, row, signCol, hadPrevious, width, height) {
+function submitSignature(sheetName, name, base64Png, row, signCol, hadPrevious, width, height, savePersonal) {
   // 확인·준비는 읽기만 하므로 락 밖에서 합니다.
   // 락은 여러 사람의 서명 저장을 한 줄로 세우기 때문에, 그 구간이 짧을수록
   // 동시에 서명할 때 뒷사람이 덜 기다립니다.
-  const plan = prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height);
+  const plan = prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height, savePersonal);
 
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -701,7 +701,7 @@ function submitSignature(sheetName, name, base64Png, row, signCol, hadPrevious, 
 }
 
 // 시트를 고치지 않는 부분. 값을 확인하고 넣을 이미지까지 만들어 둡니다.
-function prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height) {
+function prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height, savePersonal) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error('연수 탭을 찾을 수 없습니다: ' + sheetName);
@@ -747,7 +747,11 @@ function prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious
     width: width || sheet.getColumnWidth(targetCol),
     height: height || sheet.getRowHeight(targetRow),
     // 화면이 '서명완료'로 알고 있었거나, 칸에 완료 표시가 있으면 이전 서명이 있는 것입니다.
-    mayHaveOldImage: hadPrevious === true || (markValue !== '' && markValue !== null)
+    mayHaveOldImage: hadPrevious === true || (markValue !== '' && markValue !== null),
+    // 불러온 서명을 그대로 낸 경우에는 보관본을 덮어쓰지 않습니다.
+    // 크기를 줄였다 늘리는 변환이 세대마다 쌓여 서명이 점점 흐려지기 때문입니다.
+    // 값을 보내지 않는 예전 화면에서는 지금까지처럼 보관합니다.
+    savePersonal: savePersonal !== false
   };
 }
 
@@ -783,7 +787,7 @@ function writeSignature_(plan) {
 
   // 같은 이름의 줄을 찾아 고쳐 쓰거나 새 줄을 붙입니다. 동시에 실행되면
   // 한쪽 기록이 사라질 수 있어, 반드시 락 안에 있어야 합니다.
-  savePersonalSignature(plan.name, plan.base64Png);
+  if (plan.savePersonal) savePersonalSignature(plan.name, plan.base64Png);
   return { success: true };
 }
 

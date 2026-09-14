@@ -291,6 +291,10 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
     const placeholder = document.getElementById('placeholder');
     let drawing = false, lastX = 0, lastY = 0, hasStroke = false, signActive = false;
     let padScale = 1; // 서명란의 CSS 크기와 실제 그림 크기의 비율
+    // 지금 서명란에 있는 그림이 '이전 서명 불러오기'로 가져온 것인지 표시합니다.
+    // 불러온 것을 다시 보관하면 크기 변환이 세대마다 쌓여 점점 흐려지므로,
+    // 이 경우에는 보관본을 덮어쓰지 않습니다. [지우기] 로 새로 그리면 다시 보관합니다.
+    let loadedFromStore = false;
     const canvasBox = document.getElementById('canvasBox');
 
     let statusTimer = null;
@@ -505,6 +509,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
     function clearPad() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       hasStroke = false;
+      loadedFromStore = false;
       deactivate();
     }
 
@@ -636,6 +641,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
             clearPad();
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             hasStroke = true; // 불러온 서명도 수정하려면 탭으로 활성화
+            loadedFromStore = true; // 이 그림은 보관본에서 온 것입니다
             placeholder.classList.add('hidden');
           };
           img.onerror = function(){loadingPrevious=false;lockForm(false);setStatus('이전 서명을 읽지 못했습니다. 직접 서명해 주세요.','error');};
@@ -700,7 +706,8 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
 
       submitting=true;lockForm(true);document.getElementById('signSubmit').textContent='저장 중…';
       setStatus('저장 중...', 'info');
-      window.callApi('submitSignature', training, name, exportSignaturePng(width, height), row, signCol, hadPrevious, width, height)
+      // 마지막 값: 이 서명을 보관본으로 저장할지. 불러온 것을 그대로 낸 경우에는 저장하지 않습니다.
+      window.callApi('submitSignature', training, name, exportSignaturePng(width, height), row, signCol, hadPrevious, width, height, !loadedFromStore)
         .then(function () {
           submitting=false;lockForm(false);clearPad();document.getElementById('signSubmit').textContent='서명 완료';
           setStatus('서명이 저장되었습니다', 'success', 2000);
