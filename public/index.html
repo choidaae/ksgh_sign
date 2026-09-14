@@ -354,7 +354,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
       drawing = true;
       const p = scalePoint(e);
       lastX = p.x; lastY = p.y;
-      ctx.beginPath(); ctx.fillStyle = '#29283d'; ctx.arc(p.x,p.y,1.25*padScale,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.fillStyle = '#29283d'; ctx.arc(p.x,p.y,1.75*padScale,0,Math.PI*2); ctx.fill();
       if (!hasStroke) { hasStroke = true; placeholder.classList.add('hidden'); }
     }
     function move(e) {
@@ -366,7 +366,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
       }
       if (!drawing || drawingPointer !== e.pointerId) return;
       const p = scalePoint(e);
-      ctx.lineWidth = 2.5 * padScale; ctx.lineCap = 'round'; ctx.strokeStyle = '#1f2430';
+      ctx.lineWidth = 3.5 * padScale; ctx.lineCap = 'round'; ctx.strokeStyle = '#1f2430';
       ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
       lastX = p.x; lastY = p.y;
       e.preventDefault();
