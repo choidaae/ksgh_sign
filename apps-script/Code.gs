@@ -402,7 +402,7 @@ function callAction_(action, args) {
     case 'getAdminData': return getAdminData();
     case 'getMasterStaffList': return getMasterStaffList();
     case 'saveStaffChanges': return saveStaffChanges(args[0]);
-    case 'createTrainingRegister': return createTrainingRegister(args[0], args[1]);
+    case 'createTrainingRegister': return createTrainingRegister(args[0], args[1], args[2]);
     case 'deleteRegisterSheet': return deleteRegisterSheet(args[0]);
     default: throw new Error('허용되지 않은 요청입니다: ' + action);
   }
