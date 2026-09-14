@@ -198,43 +198,44 @@ html{height:100%}
 body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 .wrap{flex:1;min-height:0;width:100%;margin:0 auto;display:flex;flex-direction:column;
   padding:10px 14px 0}
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.brand{min-width:0;font-size:13.5px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand b{background:var(--primary);padding:6px 9px;border-radius:11px;margin-right:8px}
+.topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;margin-bottom:18px}
+.brand{display:inline-flex;align-items:center;font-size:14px;font-weight:750}
+.brand b{background:var(--primary);padding:9px 12px;border-radius:13px;margin-right:9px}
 .topbar a{font-size:13px;text-decoration:none;white-space:nowrap}
-.card{padding:14px;margin-bottom:10px}
-.field{margin-bottom:10px}
+.card{padding:20px 16px;margin-bottom:12px}
+.field{margin-bottom:16px}
 label{margin-bottom:4px}
 select{min-height:44px;padding:10px 12px}
 .person-fields{gap:10px}
-.sign-card{margin-bottom:0}
-/* 서명란 높이는 화면 크기와 상관없이 고정합니다. 이 값만 바꾸면 됩니다.
+.sign-card{margin-bottom:0;display:flex;flex-direction:column;min-height:0}
+/* 서명란 높이는 200px 로 고정합니다(이 값만 바꾸면 됩니다). 화면이 늘어나도
+   따라 늘어나지 않고, 자리가 정말 모자랄 때만 스크롤 대신 조금 줄어듭니다.
    그림 영역(canvas)은 흐름에서 빼 서명란 높이를 그대로 따르게 합니다. */
-.canvas-box{height:200px;margin-top:0;position:relative}
+.canvas-box{height:200px;flex:0 1 auto;min-height:110px;margin-top:0;position:relative}
 canvas{position:absolute;top:0;left:0;width:100%;height:100%}
-/* 남는 높이는 위아래 여백으로 똑같이 나눠, 내용이 화면 가운데에 오게 합니다.
-   자리가 모자라면 두 여백은 0이 되므로 잘려 보이지 않습니다. */
+/* 내용은 머리말 바로 아래(위쪽)에 붙이고, 남는 높이는 아래에 둡니다. */
 .content{flex:1;min-height:0;display:flex;flex-direction:column}
-.content > .card:first-child{margin-top:auto}
-.submit-area{position:static;margin-bottom:auto;padding:10px 0 max(10px,env(safe-area-inset-bottom))}
+.submit-area{position:static;padding:10px 0 max(10px,env(safe-area-inset-bottom))}
 .primary{min-height:50px}
 /* 좁은 화면에서는 머리말이 잘리지 않게 조금 줄입니다. */
 @media(max-width:360px){
-  .brand{font-size:12px}
-  .brand b{padding:5px 8px;margin-right:6px}
-  .topbar a{font-size:12px}
   .sign-head .btn-row button{font-size:11.5px;padding:9px 8px}
 }
-/* 화면이 얕으면 여백을 더 줄여 서명란을 확보합니다. */
+/* 화면이 낮으면 여백부터 줄여 서명란 높이를 지킵니다. */
+@media(max-height:700px){
+  .topbar{margin-bottom:12px}
+  .card{padding:16px 14px;margin-bottom:10px}
+  .field{margin-bottom:12px}
+}
 @media(max-height:620px){
   .wrap{padding:8px 12px 0}
-  .topbar{margin-bottom:8px}
-  .card{padding:12px;margin-bottom:8px}
-  .field{margin-bottom:8px}
+  .topbar{margin-bottom:10px}
+  .card{padding:14px 13px;margin-bottom:9px}
+  .field{margin-bottom:11px}
   select{min-height:40px;padding:8px 12px}
   .sign-head{margin-bottom:6px}
   .sign-head .btn-row button{min-height:36px;padding:8px 9px}
-  .canvas-box{height:150px}
+  .canvas-box{height:140px}
   .submit-area{padding:8px 0 max(8px,env(safe-area-inset-bottom))}
   .primary{min-height:44px}
 }
