@@ -25,7 +25,7 @@ const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨�
 const MANAGER_META_KEY = 'trainingManager';
 // 배포된 코드가 어느 버전인지 확인용. 코드를 고칠 때마다 이 값을 바꿔 두면,
 // /exec 주소를 열어보는 것만으로 "지금 서비스되는 코드"를 확인할 수 있습니다.
-const SCRIPT_VERSION = '2026-09-14b';
+const SCRIPT_VERSION = '2026-09-14c';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -406,7 +406,7 @@ function callAction_(action, args) {
     case 'getRegisterNames': return getRegisterNames(args[0]);
     case 'getPreviousSignature': return getPreviousSignature(args[0]);
     case 'submitSignature': return submitSignature(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    case 'getAdminData': return getAdminData(args[0] === true);
+    case 'getAdminData': return getAdminData(args[0] === true, args[1] === true);
     case 'getMasterStaffList': return getMasterStaffList();
     case 'saveStaffChanges': return saveStaffChanges(args[0]);
     case 'createTrainingRegister': return createTrainingRegister(args[0], args[1], args[2]);
@@ -468,14 +468,20 @@ function getTrainingManager_(sheet) {
 }
 
 // 관리자 화면(?admin=1)에서 쓰는 데이터: 기존 등록부 목록 + 각 탭 바로가기/인쇄용 정보
-function getAdminData(forceRefresh) {
+// includeStaff 를 켜면 마스터 명단까지 한 번에 돌려줍니다. 관리 페이지 첫 진입에서
+// 요청을 두 번 하지 않기 위한 것입니다(같은 사용자의 요청은 하나씩 처리됩니다).
+function getAdminData(forceRefresh, includeStaff) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ssUrl = ss.getUrl();
   const ssId = ss.getId();
   // 목록을 먼저 확정한 뒤 담당자를 읽어야, 새로고침으로 세대가 바뀐 경우에도
   // 담당자 캐시가 새 세대 키로 저장됩니다.
   const names = getTrainingList(forceRefresh === true);
-  return { ssUrl: ssUrl, ssId: ssId, trainings: buildAdminTrainings_(ss, names, ssUrl) };
+  return {
+    ssUrl: ssUrl, ssId: ssId,
+    trainings: buildAdminTrainings_(ss, names, ssUrl),
+    staff: includeStaff === true ? getMasterStaffList() : null
+  };
 }
 
 // 등록부마다 탭 번호와 담당자를 읽어야 해서, 등록부가 많으면 그만큼 느려집니다.
