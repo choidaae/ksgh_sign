@@ -650,7 +650,21 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
     // 잘라내기는 하지 않습니다. 서버가 이미지를 칸에 맞춰 늘리므로 여백을 잘라내면
     // 서명이 칸 안에서 커 보이는 등 기존과 모양이 달라집니다.
     function exportSignaturePng(cellWidth, cellHeight) {
-      const full = function () { return canvas.toDataURL('image/png'); };
+      // 칸 크기를 모를 때도 원본 그대로 보내지 않습니다. 시트 셀에 들어가는
+      // 문자열에는 길이 한계가 있고, 업로드도 그만큼 느려집니다.
+      const full = function () {
+        const max = 800;
+        if (canvas.width <= max) return canvas.toDataURL('image/png');
+        const out = document.createElement('canvas');
+        out.width = max;
+        out.height = Math.max(1, Math.round(canvas.height * max / canvas.width));
+        const octx = out.getContext('2d');
+        if (!octx) return canvas.toDataURL('image/png');
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
+        octx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, out.width, out.height);
+        return out.toDataURL('image/png');
+      };
       if (!cellWidth || !cellHeight) return full();
       const scale = 4; // 고해상도 화면과 이전 서명 다시 불러오기를 감안한 여유
       const w = Math.round(Math.max(20, cellWidth - 6) * scale);

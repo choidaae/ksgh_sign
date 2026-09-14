@@ -10,7 +10,10 @@
 
 // ▼ 필요시 실제 환경에 맞게 수정
 const TEMPLATE_SHEET_NAME = '등록부 양식';   // 서식 틀이 들어있는 탭 이름
-const TRAINING_LIST_CACHE_SECONDS = 60; // 연수 목록만 캐시 (명단/서명은 실시간 조회)
+// 연수 목록만 캐시합니다(명단/서명은 실시간 조회). 등록부를 만들거나 지우면
+// 즉시 무효화되므로, 시트를 손으로 고쳤을 때 반영이 늦어지는 시간만 고려하면 됩니다.
+// 관리 페이지의 새로고침 버튼은 이 캐시를 무시하고 다시 읽습니다.
+const TRAINING_LIST_CACHE_SECONDS = 600;
 // 서명 완료 표시. 서명 칸에 값을 남기고 표시 형식을 ';;;' 로 지정해
 // 화면과 인쇄물 어디에도 보이지 않게 합니다. 흰 글자와 달리 셀 배경색과 무관합니다.
 const SIGNED_MARK = 1;
@@ -22,7 +25,7 @@ const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨�
 const MANAGER_META_KEY = 'trainingManager';
 // 배포된 코드가 어느 버전인지 확인용. 코드를 고칠 때마다 이 값을 바꿔 두면,
 // /exec 주소를 열어보는 것만으로 "지금 서비스되는 코드"를 확인할 수 있습니다.
-const SCRIPT_VERSION = '2026-09-14a';
+const SCRIPT_VERSION = '2026-09-14b';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -403,7 +406,7 @@ function callAction_(action, args) {
     case 'getRegisterNames': return getRegisterNames(args[0]);
     case 'getPreviousSignature': return getPreviousSignature(args[0]);
     case 'submitSignature': return submitSignature(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    case 'getAdminData': return getAdminData();
+    case 'getAdminData': return getAdminData(args[0] === true);
     case 'getMasterStaffList': return getMasterStaffList();
     case 'saveStaffChanges': return saveStaffChanges(args[0]);
     case 'createTrainingRegister': return createTrainingRegister(args[0], args[1], args[2]);
@@ -438,6 +441,21 @@ function setTrainingManager_(sheet, manager) {
     sheet.addDeveloperMetadata(MANAGER_META_KEY, manager);
   } catch (err) { /* 담당자 표시는 부가 정보입니다 */ }
 }
+// 등록부마다 메타데이터를 읽으면 등록부 수만큼 왕복이 생깁니다. 한 번에 찾습니다.
+// 한 번에 찾지 못하는 환경이면 null 을 돌려주고, 부르는 쪽에서 탭별로 읽습니다.
+function getTrainingManagerMap_(ss) {
+  try {
+    const map = {};
+    ss.createDeveloperMetadataFinder().withKey(MANAGER_META_KEY).find().forEach(function (md) {
+      const location = md.getLocation();
+      const sheet = location ? location.getSheet() : null;
+      if (sheet) map[sheet.getName()] = String(md.getValue() || '');
+    });
+    return map;
+  } catch (err) {
+    return null;
+  }
+}
 function getTrainingManager_(sheet) {
   try {
     const found = sheet.getDeveloperMetadata().filter(function (md) {
@@ -450,23 +468,53 @@ function getTrainingManager_(sheet) {
 }
 
 // 관리자 화면(?admin=1)에서 쓰는 데이터: 기존 등록부 목록 + 각 탭 바로가기/인쇄용 정보
-function getAdminData() {
+function getAdminData(forceRefresh) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ssUrl = ss.getUrl();
   const ssId = ss.getId();
-  const trainings = getTrainingList(true).map(function (name) {
+  // 목록을 먼저 확정한 뒤 담당자를 읽어야, 새로고침으로 세대가 바뀐 경우에도
+  // 담당자 캐시가 새 세대 키로 저장됩니다.
+  const names = getTrainingList(forceRefresh === true);
+  return { ssUrl: ssUrl, ssId: ssId, trainings: buildAdminTrainings_(ss, names, ssUrl) };
+}
+
+// 등록부마다 탭 번호와 담당자를 읽어야 해서, 등록부가 많으면 그만큼 느려집니다.
+// 목록이 바뀔 때까지는(= 세대가 같을 때까지) 조립한 결과를 그대로 재사용합니다.
+// 새로고침 버튼을 누르면 세대가 바뀌므로 이 캐시도 함께 지나갑니다.
+function buildAdminTrainings_(ss, names, ssUrl) {
+  const key = 'register.adminTrainings.v1.' + ss.getId() + '.' + trainingGeneration_(ss);
+  const listMark = names.join('\u0000');
+  let cache = null;
+  try {
+    cache = CacheService.getScriptCache();
+    const raw = cache.get(key);
+    const saved = raw ? JSON.parse(raw) : null;
+    if (saved && saved.listMark === listMark && Array.isArray(saved.trainings)) return saved.trainings;
+  } catch (err) { /* 캐시를 쓰지 못하면 그대로 조립합니다 */ }
+
+  const managers = getTrainingManagerMap_(ss);
+  const trainings = names.map(function (name) {
     const sheet = ss.getSheetByName(name);
     if (!sheet) return null;
     const gid = sheet.getSheetId();
     // manager 가 빈 값이면 화면에서 예전처럼 '연수 등록부' 로 보여줍니다.
-    return { name: name, gid: gid, url: ssUrl + '#gid=' + gid, manager: getTrainingManager_(sheet) };
+    const manager = managers ? (managers[name] || '') : getTrainingManager_(sheet);
+    return { name: name, gid: gid, url: ssUrl + '#gid=' + gid, manager: manager };
   }).filter(function (item) { return item !== null; });
-  return { ssUrl: ssUrl, ssId: ssId, trainings: trainings };
+
+  if (cache) {
+    try { cache.put(key, JSON.stringify({ listMark: listMark, trainings: trainings }), TRAINING_LIST_CACHE_SECONDS); }
+    catch (err) { /* 캐시 오류는 결과에 영향을 주지 않습니다 */ }
+  }
+  return trainings;
 }
 // 조회 중 생성/삭제가 일어나면 이전 요청은 이전 세대에만 캐시를 저장합니다.
 // 따라서 늦게 끝난 조회가 새 목록을 오래된 목록으로 덮어쓰지 않습니다.
 function trainingListGenerationKey_(ss) {
   return 'register.trainingGeneration.v1.' + ss.getId();
+}
+function trainingGeneration_(ss) {
+  return PropertiesService.getScriptProperties().getProperty(trainingListGenerationKey_(ss)) || '0';
 }
 function invalidateTrainingListCache_(ss) {
   PropertiesService.getScriptProperties().setProperty(trainingListGenerationKey_(ss), Utilities.getUuid());
@@ -474,8 +522,7 @@ function invalidateTrainingListCache_(ss) {
 function getTrainingList(forceRefresh) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (forceRefresh === true) invalidateTrainingListCache_(ss);
-  const generation = PropertiesService.getScriptProperties().getProperty(trainingListGenerationKey_(ss)) || '0';
-  const key = 'register.trainings.v1.' + ss.getId() + '.' + generation;
+  const key = 'register.trainings.v1.' + ss.getId() + '.' + trainingGeneration_(ss);
   const config = JSON.stringify([TEMPLATE_SHEET_NAME, EXCLUDED_TRAINING_SHEETS]);
   let cache = null;
   try {
@@ -657,13 +704,26 @@ function submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadP
   const mismatch = new Error('등록부 명단이 변경되었습니다. 연수를 다시 선택해 주세요.');
   if (headerRow === -1 || targetRow <= headerRow || targetRow > sheet.getLastRow()) throw mismatch;
   const nameCol = (targetCol === LEFT_SIGN_COL) ? LEFT_NAME_COL : RIGHT_NAME_COL;
-  if (String(sheet.getRange(targetRow, nameCol).getValue()) !== String(name)) throw mismatch;
+  // 이름 칸과 서명 칸은 서로 붙어 있으므로 한 번에 읽습니다. (열 배치를 바꾼 경우에만 따로 읽습니다)
+  let currentName, markValue;
+  if (targetCol === nameCol + 1) {
+    const cells = sheet.getRange(targetRow, nameCol, 1, 2).getValues()[0];
+    currentName = cells[0]; markValue = cells[1];
+  } else {
+    currentName = sheet.getRange(targetRow, nameCol).getValue();
+    markValue = sheet.getRange(targetRow, targetCol).getValue();
+  }
+  if (String(currentName) !== String(name)) throw mismatch;
   if (typeof base64Png !== 'string' || !/^data:image\/png;base64,/.test(base64Png)) throw new Error('서명 이미지가 올바르지 않습니다.');
+  // 이 칸에 이전 서명이 없으면 이미지 목록을 훑지 않습니다.
+  // getImages() 는 등록부에 서명이 쌓일수록 느려지는데, 처음 서명하는 경우가 대부분입니다.
+  // 완료 표시가 없더라도 화면이 '서명완료'로 알고 있었다면(hadPrevious) 훑습니다.
+  const mayHaveOldImage = hadPrevious === true || (markValue !== '' && markValue !== null);
   // Keep old images until a replacement has been inserted successfully.
-  const oldImages = sheet.getImages().filter(function(img) {
+  const oldImages = mayHaveOldImage ? sheet.getImages().filter(function(img) {
     const a = img.getAnchorCell();
     return a.getRow() === targetRow && a.getColumn() === targetCol;
-  });
+  }) : [];
 
   const bytes = Utilities.base64Decode(base64Png.split(',').pop());
   const blob = Utilities.newBlob(bytes, 'image/png', name + '_서명.png');
