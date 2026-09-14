@@ -207,12 +207,16 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 label{margin-bottom:4px}
 select{min-height:44px;padding:10px 12px}
 .person-fields{gap:10px}
-.sign-card{flex:1;min-height:0;display:flex;flex-direction:column;margin-bottom:0}
-.canvas-box{flex:1;min-height:130px;margin-top:0;position:relative}
-/* 서명란 크기는 남은 높이로만 정합니다. 그림 영역(canvas)의 원래 크기가
-   화면 높이를 밀어 올리지 않도록 흐름에서 빼둡니다. */
+.sign-card{margin-bottom:0}
+/* 서명란 높이는 화면 크기와 상관없이 고정합니다. 이 값만 바꾸면 됩니다.
+   그림 영역(canvas)은 흐름에서 빼 서명란 높이를 그대로 따르게 합니다. */
+.canvas-box{height:200px;margin-top:0;position:relative}
 canvas{position:absolute;top:0;left:0;width:100%;height:100%}
-.submit-area{position:static;padding:10px 0 max(10px,env(safe-area-inset-bottom))}
+/* 남는 높이는 위아래 여백으로 똑같이 나눠, 내용이 화면 가운데에 오게 합니다.
+   자리가 모자라면 두 여백은 0이 되므로 잘려 보이지 않습니다. */
+.content{flex:1;min-height:0;display:flex;flex-direction:column}
+.content > .card:first-child{margin-top:auto}
+.submit-area{position:static;margin-bottom:auto;padding:10px 0 max(10px,env(safe-area-inset-bottom))}
 .primary{min-height:50px}
 /* 좁은 화면에서는 머리말이 잘리지 않게 조금 줄입니다. */
 @media(max-width:360px){
@@ -230,7 +234,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
   select{min-height:40px;padding:8px 12px}
   .sign-head{margin-bottom:6px}
   .sign-head .btn-row button{min-height:36px;padding:8px 9px}
-  .canvas-box{min-height:100px}
+  .canvas-box{height:150px}
   .submit-area{padding:8px 0 max(8px,env(safe-area-inset-bottom))}
   .primary{min-height:44px}
 }
@@ -241,6 +245,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
   <div class="wrap">
     <header class="topbar"><span class="brand"><b>✓</b> 군산여자고등학교 · 연수 서명</span><a href="admin.html">등록부 관리 ↗</a></header>
 
+    <main class="content">
     <div class="card">
       <div class="field">
         <label for="trainingSelect">연수 선택</label>
@@ -274,6 +279,7 @@ canvas{position:absolute;top:0;left:0;width:100%;height:100%}
       </div>
     </div>
     <div class="submit-area"><button class="primary" id="signSubmit" onclick="submitSign()">서명 완료</button></div>
+    </main>
   </div>
 
     <script src="config.js"></script>
