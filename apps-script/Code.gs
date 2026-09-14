@@ -11,6 +11,11 @@
 // ▼ 필요시 실제 환경에 맞게 수정
 const TEMPLATE_SHEET_NAME = '등록부 양식';   // 서식 틀이 들어있는 탭 이름
 const TRAINING_LIST_CACHE_SECONDS = 60; // 연수 목록만 캐시 (명단/서명은 실시간 조회)
+// 서명 완료 표시. 서명 칸에 값을 남기고 표시 형식을 ';;;' 로 지정해
+// 화면과 인쇄물 어디에도 보이지 않게 합니다. 흰 글자와 달리 셀 배경색과 무관합니다.
+const SIGNED_MARK = 1;
+const HIDDEN_FORMAT = ';;;';
+
 const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨김 시트(자동 생성)
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
@@ -356,6 +361,7 @@ function doGet(e) {
 
 // 정적 화면의 모든 요청을 처리합니다. 본문 형식: {action, args, token}
 function doPost(e) {
+  const startedAt = Date.now();
   let payload;
   try {
     payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
@@ -369,9 +375,11 @@ function doPost(e) {
     const isAdmin = ADMIN_ACTIONS.indexOf(action) !== -1;
     if (!isPublic && !isAdmin) throw new Error('허용되지 않은 요청입니다: ' + action);
     if (isAdmin) requireAdmin_(payload.token);
-    return jsonOutput_({ ok: true, result: callAction_(action, args) });
+    // ms 는 서버에서 실제로 걸린 시간입니다. 화면의 전체 시간과 비교하면
+    // 시트 작업이 느린 것인지 기동·연결이 느린 것인지 구분됩니다.
+    return jsonOutput_({ ok: true, result: callAction_(action, args), ms: Date.now() - startedAt });
   } catch (err) {
-    return jsonOutput_({ ok: false, error: (err && err.message) ? err.message : String(err) });
+    return jsonOutput_({ ok: false, error: (err && err.message) ? err.message : String(err), ms: Date.now() - startedAt });
   }
 }
 
@@ -471,15 +479,18 @@ function getRegisterNames(sheetName) {
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error('연수 탭을 찾을 수 없습니다: ' + sheetName);
 
-  const positions = findNamePositions(sheet); // [{name,row,signCol}]
-  const signedCells = {};
-  sheet.getImages().forEach(function (img) {
-    const a = img.getAnchorCell();
-    signedCells[a.getRow() + '_' + a.getColumn()] = true;
-  });
+  const positions = findNamePositions(sheet); // [{name,dept,row,signCol,marked}]
+
+  // 완료 표시가 하나도 없으면 이 표시 방식을 쓰기 전에 만든 등록부일 수 있습니다.
+  // 그때만 예전처럼 이미지를 훑고, 찾은 결과를 표시로 옮겨 적습니다.
+  // 한 번 옮기고 나면 이후 조회에서는 이미지를 읽지 않습니다.
+  // 서명이 아직 없는 새 등록부도 여기에 들어오지만, 이미지가 없어 훑을 것이 없습니다.
+  if (!positions.some(function (p) { return p.marked; })) {
+    backfillSignedMarks_(sheet, positions);
+  }
 
   const people = positions.map(function (p) {
-    return { name: p.name, dept: p.dept, done: !!signedCells[p.row + '_' + p.signCol], row: p.row, signCol: p.signCol };
+    return { name: p.name, dept: p.dept, done: !!p.marked, row: p.row, signCol: p.signCol };
   });
 
   const rowHeight = positions.length ? sheet.getRowHeight(positions[0].row) : 22;
@@ -488,6 +499,47 @@ function getRegisterNames(sheetName) {
   colWidths[RIGHT_SIGN_COL] = sheet.getColumnWidth(RIGHT_SIGN_COL);
 
   return { people: people, rowHeight: rowHeight, colWidths: colWidths };
+}
+
+// 예전 등록부를 위한 1회성 처리. 이미지 위치를 읽어 서명 칸에 완료 표시를 남깁니다.
+// positions 의 marked 값도 함께 갱신해 이번 조회부터 바로 반영됩니다.
+function backfillSignedMarks_(sheet, positions) {
+  if (!positions.length) return;
+  let signed;
+  try {
+    signed = {};
+    sheet.getImages().forEach(function (img) {
+      const a = img.getAnchorCell();
+      signed[a.getRow() + '_' + a.getColumn()] = true;
+    });
+  } catch (err) {
+    return; // 이미지를 읽지 못해도 명단 조회 자체는 진행합니다
+  }
+
+  const targets = positions.filter(function (p) { return signed[p.row + '_' + p.signCol]; });
+  if (!targets.length) return;
+
+  const first = positions[0].row;
+  const last = positions[positions.length - 1].row;
+  const rows = last - first + 1;
+  const cols = [LEFT_SIGN_COL, RIGHT_SIGN_COL];
+
+  for (let c = 0; c < cols.length; c++) {
+    const column = cols[c];
+    const block = [];
+    for (let i = 0; i < rows; i++) block.push(['']);
+    let hit = false;
+    targets.forEach(function (p) {
+      if (p.signCol !== column) return;
+      block[p.row - first][0] = SIGNED_MARK;
+      hit = true;
+    });
+    if (!hit) continue;
+    const range = sheet.getRange(first, column, rows, 1);
+    range.setNumberFormat(HIDDEN_FORMAT);
+    range.setValues(block);
+  }
+  targets.forEach(function (p) { p.marked = true; });
 }
 
 // 표 머리행("순")의 행 번호. A열 위쪽 몇 줄만 읽습니다.
@@ -516,8 +568,11 @@ function findNamePositions(sheet) {
     const rightName = values[i][RIGHT_NAME_COL - 1];
     const leftDept = values[i][LEFT_DEPT_COL - 1];
     const rightDept = values[i][RIGHT_DEPT_COL - 1];
-    if (leftName) positions.push({ name: String(leftName), dept: String(leftDept || ''), row: rowNum, signCol: LEFT_SIGN_COL });
-    if (rightName) positions.push({ name: String(rightName), dept: String(rightDept || ''), row: rowNum, signCol: RIGHT_SIGN_COL });
+    // 서명 칸(D/H)은 어차피 같은 범위로 읽고 있습니다. 완료 표시를 여기서 함께 확인합니다.
+    if (leftName) positions.push({ name: String(leftName), dept: String(leftDept || ''), row: rowNum,
+      signCol: LEFT_SIGN_COL, marked: values[i][LEFT_SIGN_COL - 1] !== '' });
+    if (rightName) positions.push({ name: String(rightName), dept: String(rightDept || ''), row: rowNum,
+      signCol: RIGHT_SIGN_COL, marked: values[i][RIGHT_SIGN_COL - 1] !== '' });
   }
   return positions;
 }
@@ -584,6 +639,12 @@ function submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadP
   image.setWidth(Math.max(20, w - 6)).setHeight(Math.max(14, h - 6));
 
   oldImages.forEach(function(img) { img.remove(); });
+  // 완료 표시를 서명 칸에 남깁니다. 다음 명단 조회가 이미지를 읽지 않아도 되게 합니다.
+  // 표시 형식을 함께 지정해, 이 방식을 쓰기 전에 만든 등록부에서도 값이 보이지 않게 합니다.
+  const markCell = sheet.getRange(targetRow, targetCol);
+  markCell.setNumberFormat(HIDDEN_FORMAT);
+  markCell.setValue(SIGNED_MARK);
+
   savePersonalSignature(name, base64Png);
   return { success: true };
 }
