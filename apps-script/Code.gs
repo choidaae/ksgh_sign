@@ -17,6 +17,9 @@ const SIGNED_MARK = 1;
 const HIDDEN_FORMAT = ';;;';
 
 const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨김 시트(자동 생성)
+// 연수 담당자는 탭의 개발자 메타데이터에 적어 둡니다. 셀을 차지하지 않고,
+// 탭 이름을 바꿔도 따라다니며, 탭을 지우면 같이 사라집니다.
+const MANAGER_META_KEY = 'trainingManager';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -186,9 +189,13 @@ function deleteRegisterSheet(sheetName) {
 /* ---------------------------------------------------------
  *  등록부 생성 (양식 탭 복제)
  * --------------------------------------------------------- */
-function createTrainingRegister(topic, dateTimeStr) {
+function createTrainingRegister(topic, dateTimeStr, manager) {
   topic = (topic || '').trim();
+  dateTimeStr = (dateTimeStr || '').trim();
+  manager = (manager || '').trim();
   if (!topic) throw new Error('연수 주제를 입력해주세요.');
+  if (!dateTimeStr) throw new Error('일시를 입력해주세요.');
+  if (!manager) throw new Error('연수 담당자를 입력해주세요.');
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -212,7 +219,8 @@ function createTrainingRegister(topic, dateTimeStr) {
   ss.moveActiveSheet(1);
 
   try {
-    fillRegister(newSheet, topic, dateTimeStr, staffList);
+    fillRegister(newSheet, topic, dateTimeStr, manager, staffList);
+    setTrainingManager_(newSheet, manager);
     ss.setActiveSheet(newSheet);
   } finally {
     // 생성 중 오류가 나더라도 이미 복제된 탭이 있다면 목록을 갱신합니다.
@@ -223,13 +231,15 @@ function createTrainingRegister(topic, dateTimeStr) {
   return { sheetName: topic };
 }
 
-function fillRegister(sheet, topic, dateTimeStr, staffList) {
+function fillRegister(sheet, topic, dateTimeStr, manager, staffList) {
   // 주제 / 일시 입력 (A열에서 라벨 찾아 오른쪽 셀에 기입)
+  // 양식에 '담당자' 라벨이 있으면 담당자도 같은 방식으로 적습니다. 없으면 건너뜁니다.
   const colA = sheet.getRange(1, 1, Math.min(10, sheet.getLastRow()), 1).getValues();
   for (let i = 0; i < colA.length; i++) {
     const label = String(colA[i][0]).trim();
     if (label === '주제') sheet.getRange(i + 1, 2).setValue(topic);
     if (label === '일시') sheet.getRange(i + 1, 2).setValue(dateTimeStr || '');
+    if (label === '담당자') sheet.getRange(i + 1, 2).setValue(manager || '');
   }
 
   // 헤더 행("순") 찾기 → 데이터 시작 행
@@ -414,6 +424,27 @@ function jsonOutput_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// 담당자 저장/조회. 값이 없거나 메타데이터를 쓰지 못해도 등록부 생성 자체는 막지 않습니다.
+function setTrainingManager_(sheet, manager) {
+  if (!manager) return;
+  try {
+    sheet.getDeveloperMetadata().forEach(function (md) {
+      if (md.getKey() === MANAGER_META_KEY) md.remove();
+    });
+    sheet.addDeveloperMetadata(MANAGER_META_KEY, manager);
+  } catch (err) { /* 담당자 표시는 부가 정보입니다 */ }
+}
+function getTrainingManager_(sheet) {
+  try {
+    const found = sheet.getDeveloperMetadata().filter(function (md) {
+      return md.getKey() === MANAGER_META_KEY;
+    });
+    return found.length ? String(found[found.length - 1].getValue() || '') : '';
+  } catch (err) {
+    return '';
+  }
+}
+
 // 관리자 화면(?admin=1)에서 쓰는 데이터: 기존 등록부 목록 + 각 탭 바로가기/인쇄용 정보
 function getAdminData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -423,7 +454,8 @@ function getAdminData() {
     const sheet = ss.getSheetByName(name);
     if (!sheet) return null;
     const gid = sheet.getSheetId();
-    return { name: name, gid: gid, url: ssUrl + '#gid=' + gid };
+    // manager 가 빈 값이면 화면에서 예전처럼 '연수 등록부' 로 보여줍니다.
+    return { name: name, gid: gid, url: ssUrl + '#gid=' + gid, manager: getTrainingManager_(sheet) };
   }).filter(function (item) { return item !== null; });
   return { ssUrl: ssUrl, ssId: ssId, trainings: trainings };
 }
