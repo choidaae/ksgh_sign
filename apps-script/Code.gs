@@ -25,7 +25,7 @@ const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨�
 const MANAGER_META_KEY = 'trainingManager';
 // 배포된 코드가 어느 버전인지 확인용. 코드를 고칠 때마다 이 값을 바꿔 두면,
 // /exec 주소를 열어보는 것만으로 "지금 서비스되는 코드"를 확인할 수 있습니다.
-const SCRIPT_VERSION = '2026-09-14c';
+const SCRIPT_VERSION = '2026-09-14d';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -683,12 +683,25 @@ function getPreviousSignature(name) {
 }
 
 function submitSignature(sheetName, name, base64Png, row, signCol, hadPrevious, width, height) {
+  // 확인·준비는 읽기만 하므로 락 밖에서 합니다.
+  // 락은 여러 사람의 서명 저장을 한 줄로 세우기 때문에, 그 구간이 짧을수록
+  // 동시에 서명할 때 뒷사람이 덜 기다립니다.
+  const plan = prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height);
+
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
-  try { return submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height); }
-  finally { lock.releaseLock(); }
+  try {
+    return writeSignature_(plan);
+  } finally {
+    // 시트 쓰기는 모아두었다가 나중에 반영됩니다. 락을 풀기 전에 반영해야
+    // 다음 사람이 완료 표시를 제대로 보고, 같은 칸에 이미지가 겹치지 않습니다.
+    try { SpreadsheetApp.flush(); } catch (err) { /* 이미 실패한 요청은 그대로 둡니다 */ }
+    lock.releaseLock();
+  }
 }
-function submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height) {
+
+// 시트를 고치지 않는 부분. 값을 확인하고 넣을 이미지까지 만들어 둡니다.
+function prepareSignature_(sheetName, name, base64Png, row, signCol, hadPrevious, width, height) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error('연수 탭을 찾을 수 없습니다: ' + sheetName);
@@ -721,33 +734,56 @@ function submitSignatureInternal_(sheetName, name, base64Png, row, signCol, hadP
   }
   if (String(currentName) !== String(name)) throw mismatch;
   if (typeof base64Png !== 'string' || !/^data:image\/png;base64,/.test(base64Png)) throw new Error('서명 이미지가 올바르지 않습니다.');
+
+  const bytes = Utilities.base64Decode(base64Png.split(',').pop());
+  return {
+    sheet: sheet,
+    name: name,
+    base64Png: base64Png,
+    targetRow: targetRow,
+    targetCol: targetCol,
+    blob: Utilities.newBlob(bytes, 'image/png', name + '_서명.png'),
+    // 클라이언트가 넘겨준 열너비/행높이를 그대로 사용 (없으면 안전하게 재조회)
+    width: width || sheet.getColumnWidth(targetCol),
+    height: height || sheet.getRowHeight(targetRow),
+    // 화면이 '서명완료'로 알고 있었거나, 칸에 완료 표시가 있으면 이전 서명이 있는 것입니다.
+    mayHaveOldImage: hadPrevious === true || (markValue !== '' && markValue !== null)
+  };
+}
+
+// 시트를 고쳐 쓰는 부분. 반드시 락을 잡은 상태에서만 부릅니다.
+function writeSignature_(plan) {
+  const sheet = plan.sheet, targetRow = plan.targetRow, targetCol = plan.targetCol;
+
+  // 위 확인은 락을 잡기 전에 한 것이라, 그 사이 같은 칸에 서명이 들어왔을 수 있습니다.
+  // 한 칸만 다시 읽어 확인합니다. getImages() 와 달리 비용이 거의 없습니다.
+  let mayHaveOldImage = plan.mayHaveOldImage;
+  if (!mayHaveOldImage) {
+    const mark = sheet.getRange(targetRow, targetCol).getValue();
+    mayHaveOldImage = mark !== '' && mark !== null;
+  }
+
   // 이 칸에 이전 서명이 없으면 이미지 목록을 훑지 않습니다.
   // getImages() 는 등록부에 서명이 쌓일수록 느려지는데, 처음 서명하는 경우가 대부분입니다.
-  // 완료 표시가 없더라도 화면이 '서명완료'로 알고 있었다면(hadPrevious) 훑습니다.
-  const mayHaveOldImage = hadPrevious === true || (markValue !== '' && markValue !== null);
   // Keep old images until a replacement has been inserted successfully.
-  const oldImages = mayHaveOldImage ? sheet.getImages().filter(function(img) {
+  const oldImages = mayHaveOldImage ? sheet.getImages().filter(function (img) {
     const a = img.getAnchorCell();
     return a.getRow() === targetRow && a.getColumn() === targetCol;
   }) : [];
 
-  const bytes = Utilities.base64Decode(base64Png.split(',').pop());
-  const blob = Utilities.newBlob(bytes, 'image/png', name + '_서명.png');
-  const image = sheet.insertImage(blob, targetCol, targetRow);
+  const image = sheet.insertImage(plan.blob, targetCol, targetRow);
+  image.setWidth(Math.max(20, plan.width - 6)).setHeight(Math.max(14, plan.height - 6));
 
-  // 클라이언트가 넘겨준 열너비/행높이를 그대로 사용 (없으면 안전하게 재조회)
-  const w = width || sheet.getColumnWidth(targetCol);
-  const h = height || sheet.getRowHeight(targetRow);
-  image.setWidth(Math.max(20, w - 6)).setHeight(Math.max(14, h - 6));
-
-  oldImages.forEach(function(img) { img.remove(); });
+  oldImages.forEach(function (img) { img.remove(); });
   // 완료 표시를 서명 칸에 남깁니다. 다음 명단 조회가 이미지를 읽지 않아도 되게 합니다.
   // 표시 형식을 함께 지정해, 이 방식을 쓰기 전에 만든 등록부에서도 값이 보이지 않게 합니다.
   const markCell = sheet.getRange(targetRow, targetCol);
   markCell.setNumberFormat(HIDDEN_FORMAT);
   markCell.setValue(SIGNED_MARK);
 
-  savePersonalSignature(name, base64Png);
+  // 같은 이름의 줄을 찾아 고쳐 쓰거나 새 줄을 붙입니다. 동시에 실행되면
+  // 한쪽 기록이 사라질 수 있어, 반드시 락 안에 있어야 합니다.
+  savePersonalSignature(plan.name, plan.base64Png);
   return { success: true };
 }
 

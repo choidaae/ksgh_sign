@@ -83,12 +83,30 @@ const config = {
   requireAdminToken: String(env.REQUIRE_ADMIN_TOKEN || '').toLowerCase() === 'true'
 };
 
-fs.writeFileSync(
-  path.join(outDir, 'config.js'),
-  '// 빌드할 때 자동으로 만들어집니다. 직접 고치지 마세요.\n' +
-  'window.APP_CONFIG = ' + JSON.stringify(config, null, 2) + ';\n',
-  'utf8'
-);
+const configSource = '// 빌드할 때 자동으로 만들어집니다. 직접 고치지 마세요.\n' +
+  'window.APP_CONFIG = ' + JSON.stringify(config, null, 2) + ';\n';
+
+fs.writeFileSync(path.join(outDir, 'config.js'), configSource, 'utf8');
+
+// 작은 스크립트 두 개를 HTML 안에 넣습니다.
+// 모바일(특히 카카오 인앱 브라우저)은 캐시가 비어 있는 채로 열리는 일이 많아,
+// 파일을 따로 받을 때마다 연결을 새로 맺느라 시간이 더 걸립니다.
+// dist/config.js 와 api.js 는 그대로 남겨 둡니다. 직접 열어보거나 참고할 수 있습니다.
+const apiSource = fs.readFileSync(path.join(srcDir, 'api.js'), 'utf8');
+function inlineScript(source) {
+  // 스크립트 안의 </script> 는 HTML 을 일찍 끊어버리므로 잘라서 넣습니다.
+  return '<script>\n' + source.split('</script').join('<\\/script') + '\n</script>';
+}
+for (const name of fs.readdirSync(outDir)) {
+  if (!name.endsWith('.html')) continue;
+  const file = path.join(outDir, name);
+  let html = fs.readFileSync(file, 'utf8');
+  if (!html.includes('src="config.js"') && !html.includes('src="api.js"')) continue;
+  html = html
+    .replace('<script src="config.js"></script>', inlineScript(configSource))
+    .replace('<script src="api.js"></script>', inlineScript(apiSource));
+  fs.writeFileSync(file, html, 'utf8');
+}
 
 // GitHub Pages 가 Jekyll 로 파일을 거르지 않게 합니다.
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '', 'utf8');
