@@ -20,6 +20,9 @@ const SIGN_STORE_SHEET = '_서명저장';        // 개인 서명 보관용 숨�
 // 연수 담당자는 탭의 개발자 메타데이터에 적어 둡니다. 셀을 차지하지 않고,
 // 탭 이름을 바꿔도 따라다니며, 탭을 지우면 같이 사라집니다.
 const MANAGER_META_KEY = 'trainingManager';
+// 배포된 코드가 어느 버전인지 확인용. 코드를 고칠 때마다 이 값을 바꿔 두면,
+// /exec 주소를 열어보는 것만으로 "지금 서비스되는 코드"를 확인할 수 있습니다.
+const SCRIPT_VERSION = '2026-09-14a';
 
 // 인쇄 시 한 페이지(한 열)에 들어갈 줄 수.
 // 인쇄 미리보기를 보며 실제 한 페이지에 들어가는 줄 수에 맞춰 조정하세요.
@@ -364,6 +367,7 @@ function doGet(e) {
   return jsonOutput_({
     ok: true,
     service: '연수 등록부 API',
+    version: SCRIPT_VERSION,
     adminTokenRequired: !!adminToken_(),
     time: new Date().toISOString()
   });
@@ -387,9 +391,9 @@ function doPost(e) {
     if (isAdmin) requireAdmin_(payload.token);
     // ms 는 서버에서 실제로 걸린 시간입니다. 화면의 전체 시간과 비교하면
     // 시트 작업이 느린 것인지 기동·연결이 느린 것인지 구분됩니다.
-    return jsonOutput_({ ok: true, result: callAction_(action, args), ms: Date.now() - startedAt });
+    return jsonOutput_({ ok: true, result: callAction_(action, args), ms: Date.now() - startedAt, version: SCRIPT_VERSION });
   } catch (err) {
-    return jsonOutput_({ ok: false, error: (err && err.message) ? err.message : String(err), ms: Date.now() - startedAt });
+    return jsonOutput_({ ok: false, error: (err && err.message) ? err.message : String(err), ms: Date.now() - startedAt, version: SCRIPT_VERSION });
   }
 }
 
